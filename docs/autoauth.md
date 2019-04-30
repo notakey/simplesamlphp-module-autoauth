@@ -26,7 +26,7 @@ authentication source:
          */
         'sources' => array(
             'example-saml' => array(
-                'default' => true
+
             ),
             'example-admin' => array(
                 'subnets' => array('127.0.0.0/24', '10.0.1.0/24'),
@@ -35,6 +35,7 @@ authentication source:
                 'subnets' => array('192.168.0.0/16'),
             ),
         ),
+        'default' => 'example-saml'
     ),
 
     'example-saml' => array(
