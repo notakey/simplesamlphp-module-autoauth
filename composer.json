@@ -11,7 +11,7 @@
     "require": {
         "php": ">=5.5.9",
         "simplesamlphp/composer-module-installer": "^1.0",
-        "symfony/http-foundation": "^4.2.0"
+        "symfony/http-foundation": "^3.4"
     },
     "require-dev": {
         "simplesamlphp/simplesamlphp": "dev-master as 2.0",
