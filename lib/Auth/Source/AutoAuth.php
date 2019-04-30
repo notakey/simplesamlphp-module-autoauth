@@ -1,11 +1,14 @@
 <?php
 
+# TODO Check if namespaes can be used for authsources, migrate
+// namespace SimpleSAML\Modules\AutoAuth;
+use Symfony\Component\HttpFoundation;
 /**
  * Authentication source which let the user chooses among a list of
  * other authentication sources
  *
- * @author Lorenzo Gil, Yaco Sistemas S.L.
- * @package SimpleSAMLphp
+ * @author Ingemars Asmanis <ingemars.asmanis@notakey.com>
+ * @package SimpleSAMLphp-module-autoauth
  */
 
 class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
@@ -14,11 +17,6 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
      * The key of the AuthId field in the state.
      */
     const AUTHID = 'sspmod_autoauth_Auth_Source_AutoAuth.AuthId';
-
-    /**
-     * The string used to identify our states.
-     */
-    const STAGEID = 'sspmod_autoauth_Auth_Source_AutoAuth.StageId';
 
     /**
      * The key where the sources is saved in the state.
@@ -41,6 +39,11 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
     private $default_source;
 
     /**
+     * Key from _SERVER to retreive source IP address
+     */
+    private $ipsource;
+
+    /**
      * Constructor for this authentication source.
      *
      * @param array $info     Information about this authentication source.
@@ -60,10 +63,13 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
         if (!array_key_exists('default', $config)) {
             throw new Exception('The required "default" config option was not found');
         }
-        $this->default_source = $info['default'];
+        $this->default_source = $config['default'];
 
-        // $globalConfiguration = SimpleSAML_Configuration::getInstance();
-        // $defaultLanguage = $globalConfiguration->getString('language.default', 'en');
+        $this->ipsource = 'REMOTE_ADDR';
+        if (array_key_exists('ipsource', $config)) {
+            $this->ipsource = $config['ipsource'];
+        }
+
         $authsources = SimpleSAML_Configuration::getConfig('authsources.php');
         $this->sources = array();
 
@@ -71,8 +77,9 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
 
         foreach($config['sources'] as $source => $info) {
 
+            $subnets = array();
             if (array_key_exists('subnets', $info) && is_array($info['subnets'])) {
-                $text = $info['subnets'];
+                $subnets = $info['subnets'];
             }
 
             $is_default = false;
@@ -102,6 +109,10 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
     public function authenticate(&$state) {
         assert('is_array($state)');
 
+        $state[self::AUTHID] = $this->authId;
+        $state[self::SOURCESID] = $this->sources;
+
+        $source_hint = null;
         // Allows the user to specify the auth souce to be used
         if(isset($_GET['source'])) {
             $source_hint = $_GET['source'];
@@ -138,25 +149,42 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source {
      *
      * @return SimpleSAML_Auth_Source matching auth source or default
      */
-    private function selectauthSource($source_hint){
+    private function selectauthSource($source_hint = null){
 
         $authId = null;
-        foreach($this->sources as $source){
+        if($source_hint == null ){
+            foreach($this->sources as $source){
+                foreach($source['subnets'] as $ipsubnet){
+                    if($this->belongsToIpSubnet($ipsubnet)){
+                        $authId = $source['source'];
+                        break 2;
+                    }
+                }
+            }
 
+            if($authId == null){
+                $authId = $this->default_source;
+            }
+        }else{
+            $authId = $source_hint;
         }
 
         $as = SimpleSAML_Auth_Source::getById($authId);
-        $valid_sources = array_map(
-            function($src) {
-                return $src['source'];
-            },
-            $state[self::SOURCESID]
-        );
 
-        if ($as === NULL || !in_array($authId, $valid_sources)) {
+
+        if ($as === NULL) {
             throw new Exception('Invalid authentication source: ' . $authId);
         }
 
+        return $as;
+    }
+
+    private function belongsToIpSubnet($subnet){
+
+        if (\Symfony\Component\HttpFoundation\IpUtils::checkIp($_SERVER[$this->ipsource], $subnet)) {
+            return true;
+        }
+        return false;
     }
 
     /**
