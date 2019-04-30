@@ -57,8 +57,9 @@ Notakey Authentication appliance
 
 If running in NAA environment configure using cli:
 
-    ntk cfg :sso.auth '{
-        "autotest": {
+    # Configure module authentication sources
+    # autoselect can be any name for this virtual auth source
+    ntk cfg set :sso.auth.autoselect '{
             "module": "autoauth:AutoAuth",
             "sources": {
                 "adfs-wia": {
@@ -72,4 +73,9 @@ If running in NAA environment configure using cli:
             "ipsource": "HTTP_X_REAL_IP"
         }' --json-input
 
-    ntk cfg :sso.modules '[..., "autoauth"]' --json-input
+    # Enable module
+    ntk cfg set :sso.modules '[..., "autoauth"]' --json-input
+
+    # Switch to this source for your IdP
+    ntk cfg set :sso.\"saml-idp\".\"<IdP ID>\".auth "autoselect"
+
