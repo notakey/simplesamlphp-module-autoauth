@@ -52,3 +52,24 @@ authentication source:
         'core:AdminPassword',
     ),
 
+Notakey Authentication appliance
+---------------------
+
+If running in NAA environment configure using cli:
+
+    ntk cfg :sso.auth '{
+        "autotest": {
+            "module": "autoauth:AutoAuth",
+            "sources": {
+                "adfs-wia": {
+                    "subnets": ["172.17.0.0/24", "192.168.2.0/24"]
+                },
+                "notakey": {
+                    "subnets": ["20.0.0.0/24", "202.168.2.0/24"]
+                }
+            },
+            "default": "notakey",
+            "ipsource": "HTTP_X_REAL_IP"
+        }' --json-input
+
+    ntk cfg :sso.modules '[..., "autoauth"]' --json-input
