@@ -72,11 +72,11 @@ If running in NAA environment configure using cli:
                 "notakey": {
                     "subnets": ["20.0.0.0/24", "202.168.2.0/24"],
                     -- another source defined in :sso.auth
-                    "stepup-source": "ad-ldap",
+                    "preauth-source": "ad-ldap",
                     -- store session token for one year
-                    "stepup-duration": "P1Y",
-                    "stepup-user-attr": "uid",
-                    "stepup-set-attr": "forcedUsername"
+                    "preauth-duration": "P1Y",
+                    "preauth-user-attr": "uid",
+                    "preauth-set-attr": "notakey:preauth-uid"
 
                 }
             },
