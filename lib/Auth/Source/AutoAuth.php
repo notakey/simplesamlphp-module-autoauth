@@ -329,7 +329,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends SimpleSAML_Auth_Source
          * is also part of this module, but in a real example, this would likely be
          * the absolute URL of the login page for the site.
          */
-        $authPage = SimpleSAML\Module::getModuleURL('autoauth/auth');
+        $authPage = SimpleSAML\Module::getModuleURL('autoauth/auth.php');
 
         /*
          * The redirect to the authentication page.
