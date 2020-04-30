@@ -10,7 +10,6 @@
     }],
     "require": {
         "php": ">=5.5.9",
-        "simplesamlphp/composer-module-installer": "^1.0",
-        "symfony/http-foundation": "^3.4"
+        "simplesamlphp/composer-module-installer": "^1.0"
     }
 }

@@ -2,7 +2,6 @@
 
 # TODO Check if namespaes can be used for authsources, migrate
 // namespace SimpleSAML\Modules\AutoAuth;
-use Symfony\Component\HttpFoundation;
 
 /**
  * Authentication source which let the user chooses among a list of
@@ -269,7 +268,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
                 try {
                     $as->authenticate($state);
                 } catch (\SimpleSAML\Error\Exception $e) {
-                    \SimpleSAMLAuth_State::throwException($state, $e);
+                    \SimpleSAML\Auth\State::throwException($state, $e);
                 } catch (Exception $e) {
                     $e = new \SimpleSAML\Error\UnserializableException($e);
                     \SimpleSAML\Auth\State::throwException($state, $e);
@@ -349,11 +348,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
 
     private function belongsToIpSubnet($subnet)
     {
-
-        if (\Symfony\Component\HttpFoundation\IpUtils::checkIp($_SERVER[$this->ipsource], $subnet)) {
-            return true;
-        }
-        return false;
+        return \SimpleSAML\Utils\Net::ipCIDRcheck($subnet, $_SERVER[$this->ipsource]);
     }
 
     /**
