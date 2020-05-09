@@ -290,7 +290,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
         return $as;
     }
 
-    public static function preAuthCompleted(&$state)
+    public static function preAuthCompleted($state)
     {
         assert('is_array($state)');
         assert('array_key_exists("Attributes", $state)');
