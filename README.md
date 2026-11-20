@@ -9,6 +9,9 @@ for users.
 `autoauth:AutoAuth`
 : Authenticate the user against a list of authentication sources.
 
+Version 2.x requires SimpleSAMLphp 2.5 or newer and PHP 8.3 or newer. Use 1.x releases with SimpleSAMLphp 1.x.
+Enable the module with `'module.enable' => ['autoauth' => true]` in `config/config.php`.
+
 
 `autoauth:AutoAuth`
 ---------------------

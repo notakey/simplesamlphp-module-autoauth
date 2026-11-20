@@ -1,8 +1,23 @@
 <?php
 
-# TODO Check if namespaes can be used for authsources, migrate
-// namespace SimpleSAML\Modules\AutoAuth;
-use Symfony\Component\HttpFoundation;
+declare(strict_types=1);
+
+namespace SimpleSAML\Module\autoauth\Auth\Source;
+
+use DateInterval;
+use DateTime;
+use Exception;
+use SimpleSAML\Auth;
+use SimpleSAML\Configuration;
+use SimpleSAML\Error;
+use SimpleSAML\Logger;
+use SimpleSAML\Module;
+use SimpleSAML\Session;
+use SimpleSAML\SessionHandler;
+use SimpleSAML\Store\StoreFactory;
+use SimpleSAML\Store\StoreInterface;
+use SimpleSAML\Utils;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 /**
  * Authentication source which let the user chooses among a list of
@@ -12,56 +27,50 @@ use Symfony\Component\HttpFoundation;
  * @package SimpleSAMLphp-module-autoauth
  */
 
-class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
+class AutoAuth extends Auth\Source
 {
 
     /**
      * The key of the AuthId field in the state.
      */
-    const AUTHID = 'sspmod_autoauth_Auth_Source_AutoAuth.AuthId';
+    public const AUTHID = 'sspmod_autoauth_Auth_Source_AutoAuth.AuthId';
 
     /**
      * The key where the sources is saved in the state.
      */
-    const SOURCESID = 'sspmod_autoauth_Auth_Source_AutoAuth.SourceId';
+    public const SOURCESID = 'sspmod_autoauth_Auth_Source_AutoAuth.SourceId';
 
     /**
      * The key where the sources is saved in the state.
      */
-    const STAGEID = 'autoauth:AutoAuth';
+    public const STAGEID = 'autoauth:AutoAuth';
 
-    const PREAUTH_COMPLETE_TAG = 'autoauth:AutoAuth.preAuthComplete';
+    public const PREAUTH_COMPLETE_TAG = 'autoauth:AutoAuth.preAuthComplete';
     /**
      * The key where the selected source is saved in the session.
      */
-    const SESSION_SOURCE = 'autoauth:selectedSource';
+    public const SESSION_SOURCE = 'autoauth:selectedSource';
 
-    const SELF_REF = 'autoauth:AutoAuth.instance';
-    const PREAUTH_COOKIE_KEY = 'AutoAuth.PreAuthCookieName';
-    const PREAUTH_UID_KEY = 'AutoAuth.PreAuthUidAttr';
-    const PREAUTH_DURATION_KEY = 'AutoAuth.PreAuthDurationAttr';
+    public const SELF_REF = 'autoauth:AutoAuth.instance';
+    public const PREAUTH_COOKIE_KEY = 'AutoAuth.PreAuthCookieName';
+    public const PREAUTH_UID_KEY = 'AutoAuth.PreAuthUidAttr';
+    public const PREAUTH_DURATION_KEY = 'AutoAuth.PreAuthDurationAttr';
 
     /**
      * Array of sources we let the user chooses among.
      */
-    private $sources;
+    private array $sources;
 
     /**
      * Int Index in $this->sources[] of default auth source
      */
-    private $default_source_id = null;
+    private ?int $default_source_id = null;
 
     /**
      * Key from _SERVER to retreive source IP address
      */
-    private $ipsource;
+    private string $ipsource;
 
-    /**
-     * The data store we save the session to.
-     *
-     * @var \SimpleSAML\Store
-     */
-    private $store;
 
     /**
      * Constructor for this authentication source.
@@ -69,18 +78,13 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
      * @param array $info     Information about this authentication source.
      * @param array $config     Configuration.
      */
-    public function __construct($info, $config)
+    public function __construct(array $info, array &$config)
     {
-        assert('is_array($info)');
-        assert('is_array($config)');
-
         // Call the parent constructor first, as required by the interface
         parent::__construct($info, $config);
 
-        $this->store = \SimpleSAML\Store::getInstance();
-        if ($this->store === FALSE) {
-            throw new Exception('This module cannot be used without persistent store');
-        }
+        // Fail early if no persistent store is configured
+        self::getStore();
 
         if (!array_key_exists('sources', $config)) {
             throw new Exception('The required "sources" config option was not found');
@@ -95,13 +99,14 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
             $this->ipsource = $config['ipsource'];
         }
 
-        $this->sources = array();
+        $this->sources = [];
 
         $default_found = false;
         $source_id = 0;
         foreach ($config['sources'] as $source => $info) {
+            $source = (string) $source;
 
-            $subnets = array();
+            $subnets = [];
             if (array_key_exists('subnets', $info) && is_array($info['subnets'])) {
                 $subnets = $info['subnets'];
             }
@@ -126,7 +131,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
                 }
 
                 try {
-                    $pre_auth_duration = new \DateInterval($info['preauth-duration']);
+                    $pre_auth_duration = new DateInterval($info['preauth-duration']);
                 } catch (Exception $ex) {
                     throw new Exception('Invalid config "preauth-duration" for ' . $source);
                 }
@@ -136,11 +141,11 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
                 }
 
                 $pre_auth_user_attr = $info['preauth-user-attr'];
-                $pre_auth_set_attr = $info['preauth-set-attr'];
+                $pre_auth_set_attr = $info['preauth-set-attr'] ?? null;
             }
 
 
-            $this->sources[$source_id] = array(
+            $this->sources[$source_id] = [
                 'source' => $source,
                 'subnets' => $subnets,
                 'default' => $is_default,
@@ -148,13 +153,12 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
                 'preauth-user-attr' => $pre_auth_user_attr,
                 'preauth-duration' => $pre_auth_duration,
                 'preauth-set-attr' => $pre_auth_set_attr,
-
-            );
+            ];
             $source_id++;
         }
 
         if (!$default_found) {
-            \SimpleSAML\Logger::warning('AutoAuth: Undefined default auth source in configuration');
+            Logger::warning('AutoAuth: Undefined default auth source in configuration');
         }
     }
 
@@ -164,10 +168,8 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
      *
      * @param array &$state     Information about the current authentication.
      */
-    public function authenticate(&$state)
+    public function authenticate(array &$state): void
     {
-        assert('is_array($state)');
-
         $state[self::AUTHID] = $this->authId;
         $state[self::SOURCESID] = $this->sources;
 
@@ -175,7 +177,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
         // Allows the user to specify the auth souce to be used
         // TODO
         // make this optional with configuration, as admin can make some unadvised configurations relying on forced source selection
-        if (isset($_GET['source'])) {
+        if (isset($_GET['source']) && is_string($_GET['source'])) {
             $source_hint = $_GET['source'];
         }
 
@@ -186,32 +188,33 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
         }
 
         /* Save the selected authentication source for the logout process. */
-        $session = \SimpleSAML\Session::getSessionFromRequest();
-        $session->setData(self::SESSION_SOURCE, $state[self::AUTHID], $as->authId, \SimpleSAML\Session::DATA_TIMEOUT_SESSION_END);
+        $session = Session::getSessionFromRequest();
+        $session->setData(
+            self::SESSION_SOURCE,
+            $state[self::AUTHID],
+            $as->getAuthId(),
+            Session::DATA_TIMEOUT_SESSION_END,
+        );
 
         try {
             $as->authenticate($state);
-        } catch (\SimpleSAML\Error\Exception $e) {
-            \SimpleSAML\Auth\State::throwException($state, $e);
+        } catch (Error\Exception $e) {
+            Auth\State::throwException($state, $e);
         } catch (Exception $e) {
-            $e = new \SimpleSAML\Error\UnserializableException($e);
-            \SimpleSAML\Auth\State::throwException($state, $e);
+            $e = new Error\UnserializableException($e);
+            Auth\State::throwException($state, $e);
         }
 
-        \SimpleSAML\Auth\Source::completeAuth($state);
-
-        /* The previous function never returns, so this code is never
-        executed */
-        assert('FALSE');
+        Auth\Source::completeAuth($state);
     }
 
     /**
      * Loops through auth sources and selects the one matching IP filter.
      * Throws if nothing is found.
      *
-     * @return SimpleSAML\Auth\Source matching auth source or default
+     * @return \SimpleSAML\Auth\Source matching auth source or default
      */
-    private function selectAuthSource(&$state, $source_hint = null)
+    private function selectAuthSource(array &$state, ?string $source_hint = null): Auth\Source
     {
 
         $authId = null;
@@ -253,13 +256,13 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
             } else if (($preState = $this->getPreauthState($cookieKey))) {
                 $state[$this->sources[$auth_source_index]['preauth-set-attr']] = $preState['username'];
             } else {
-                $as = \SimpleSAML\Auth\Source::getById($this->sources[$auth_source_index]['preauth-source']);
+                $as = Auth\Source::getById($this->sources[$auth_source_index]['preauth-source']);
 
-                if ($as === NULL) {
+                if ($as === null) {
                     throw new Exception('Invalid pre-authentication source: ' . $this->sources[$auth_source_index]['preauth-source']);
                 }
 
-                $state['LoginCompletedHandler'] = array(get_class(), 'preAuthCompleted');
+                $state['LoginCompletedHandler'] = [self::class, 'preAuthCompleted'];
                 $state[self::PREAUTH_COMPLETE_TAG] = false;
                 $state[self::PREAUTH_COOKIE_KEY] = $cookieKey;
                 $state[self::PREAUTH_UID_KEY] = $this->sources[$auth_source_index]['preauth-user-attr'];
@@ -268,38 +271,29 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
 
                 try {
                     $as->authenticate($state);
-                } catch (\SimpleSAML\Error\Exception $e) {
-                    \SimpleSAMLAuth_State::throwException($state, $e);
+                } catch (Error\Exception $e) {
+                    Auth\State::throwException($state, $e);
                 } catch (Exception $e) {
-                    $e = new \SimpleSAML\Error\UnserializableException($e);
-                    \SimpleSAML\Auth\State::throwException($state, $e);
+                    $e = new Error\UnserializableException($e);
+                    Auth\State::throwException($state, $e);
                 }
 
-                /* The previous function never returns, so this code is never
-                executed */
-                assert('FALSE');
+                throw new Exception('Pre-authentication source returned without completing authentication');
             }
         }
 
 
-        $as = \SimpleSAML\Auth\Source::getById($authId);
+        $as = Auth\Source::getById($authId);
 
-        if ($as === NULL) {
+        if ($as === null) {
             throw new Exception('Invalid authentication source: ' . $authId);
         }
 
         return $as;
     }
 
-    public static function preAuthCompleted(&$state)
+    public static function preAuthCompleted(array $state): void
     {
-        assert('is_array($state)');
-        assert('array_key_exists("Attributes", $state)');
-        assert('!array_key_exists("LogoutState", $state) || is_array($state["LogoutState"])');
-        assert('array_key_exists(self::PREAUTH_COOKIE_KEY, $state)');
-        assert('array_key_exists(self::PREAUTH_UID_KEY, $state)');
-        assert('array_key_exists(self::PREAUTH_DURATION_KEY, $state)');
-
         self::setPreauthCookie(
             $state[self::PREAUTH_COOKIE_KEY],
             $state['Attributes'][$state[self::PREAUTH_UID_KEY]][0],
@@ -320,7 +314,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
          * and restores it in another location, and thus bypasses steps in
          * the authentication process.
          */
-        $stateId = \SimpleSAML\Auth\State::saveState($state, self::STAGEID);
+        $stateId = Auth\State::saveState($state, self::STAGEID);
 
         /*
          * Get the URL of the authentication page.
@@ -329,7 +323,7 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
          * is also part of this module, but in a real example, this would likely be
          * the absolute URL of the login page for the site.
          */
-        $authPage = \SimpleSAML\Module::getModuleURL('autoauth/auth.php');
+        $authPage = Module::getModuleURL('autoauth/auth.php');
 
         /*
          * The redirect to the authentication page.
@@ -337,23 +331,19 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
          * Note the 'ReturnTo' parameter. This must most likely be replaced with
          * the real name of the parameter for the login page.
          */
-        \SimpleSAML\Utils\HTTP::redirectTrustedURL($authPage, array(
-            'State' => $stateId
-        ));
-
-        /*
-         * The redirect function never returns, so we never get this far.
-         */
-        assert('FALSE');
+        (new Utils\HTTP())->redirectTrustedURL($authPage, [
+            'State' => $stateId,
+        ]);
     }
 
-    private function belongsToIpSubnet($subnet)
+    private function belongsToIpSubnet(string $subnet): bool
     {
-
-        if (\Symfony\Component\HttpFoundation\IpUtils::checkIp($_SERVER[$this->ipsource], $subnet)) {
-            return true;
+        $ip = $_SERVER[$this->ipsource] ?? null;
+        if (!is_string($ip) || $ip === '') {
+            return false;
         }
-        return false;
+
+        return IpUtils::checkIp($ip, $subnet);
     }
 
     /**
@@ -364,69 +354,72 @@ class sspmod_autoauth_Auth_Source_AutoAuth extends \SimpleSAML\Auth\Source
      *
      * @param array &$state     Information about the current logout operation.
      */
-    public function logout(&$state)
+    public function logout(array &$state): void
     {
-        assert('is_array($state)');
-
         /* Get the source that was used to authenticate */
-        $session = \SimpleSAML\Session::getSessionFromRequest();
+        $session = Session::getSessionFromRequest();
         $authId = $session->getData(self::SESSION_SOURCE, $this->authId);
 
-        $source = \SimpleSAML\Auth\Source::getById($authId);
-        if ($source === NULL) {
-            throw new Exception('Invalid authentication source during logout: ' . $source);
+        $source = is_string($authId) ? Auth\Source::getById($authId) : null;
+        if ($source === null) {
+            throw new Exception('Invalid authentication source during logout: ' . var_export($authId, true));
         }
         /* Then, do the logout on it */
         $source->logout($state);
     }
 
-    private static function setPreauthCookie($cookieKey, $username, $validityInterval)
+    private static function setPreauthCookie(string $cookieKey, string $username, DateInterval $validityInterval): bool
     {
-        \SimpleSAML\Logger::debug("setPreauthCookie: called for [$cookieKey] user $username");
-        $sessionHandler = \SimpleSAML\SessionHandler::getSessionHandler();
+        Logger::debug("setPreauthCookie: called for [$cookieKey] user $username");
+        $sessionHandler = SessionHandler::getSessionHandler();
         $params = $sessionHandler->getCookieParams();
-        $params['expire'] = (new DateTime('now'))->add($validityInterval)->getTimestamp(); // $now = new DateTime('now'); $now->add($validityInterval)->getTimestamp();
+        $params['expire'] = (new DateTime('now'))->add($validityInterval)->getTimestamp();
 
         $sessionId = self::getSessionId();
         $store = self::getStore();
-        $store->set('autoauth-preauth', $sessionId, array('username' => $username), $params['expire']);
-        \SimpleSAML\Utils\HTTP::setCookie($cookieKey, base64_encode(serialize($sessionId)), $params, FALSE);
+        $store->set('autoauth-preauth', $sessionId, ["username" => $username], $params['expire']);
+        (new Utils\HTTP())->setCookie($cookieKey, base64_encode(serialize($sessionId)), $params, false);
 
         return true;
     }
 
-    private static function getSessionId()
+    private static function getSessionId(): string
     {
-        return bin2hex(openssl_random_pseudo_bytes(16));
+        return bin2hex(random_bytes(16));
     }
 
-    private static function getStore()
+    private static function getStore(): StoreInterface
     {
-        $store = \SimpleSAML\Store::getInstance();
+        $config = Configuration::getInstance();
+        $store = StoreFactory::getInstance($config->getOptionalString('store.type', 'phpsession'));
         if ($store === false) {
-            throw new Exception('Missing persistent storage');
+            throw new Exception('This module cannot be used without persistent store');
         }
 
         return $store;
     }
 
-    private function getPreauthState($cookieKey)
+    private function getPreauthState(string $cookieKey): array|false
     {
-        \SimpleSAML\Logger::debug("checkPreauthCookie: called for {$this->getAuthId()} [$cookieKey]");
+        Logger::debug("checkPreauthCookie: called for {$this->getAuthId()} [$cookieKey]");
 
-        if (isset($_COOKIE[$cookieKey])) {
-            $sessionId = unserialize(base64_decode($_COOKIE[$cookieKey]));
+        if (isset($_COOKIE[$cookieKey]) && is_string($_COOKIE[$cookieKey])) {
+            $sessionId = unserialize(base64_decode($_COOKIE[$cookieKey]), ['allowed_classes' => false]);
+            if (!is_string($sessionId)) {
+                return false;
+            }
+
             $store = self::getStore();
             $state = $store->get('autoauth-preauth', $sessionId);
 
             if (!$state) {
-                \SimpleSAML\Logger::warning("checkPreauthCookie: previous login for {$this->getAuthId()} local state not found");
+                Logger::warning("checkPreauthCookie: previous login for {$this->getAuthId()} local state not found");
                 return false;
             }
 
             return $state;
         } else {
-            \SimpleSAML\Logger::debug("checkPreauthCookie: previous login for {$this->getAuthId()} [$cookieKey] not found");
+            Logger::debug("checkPreauthCookie: previous login for {$this->getAuthId()} [$cookieKey] not found");
         }
         return false;
     }
