@@ -12,3 +12,10 @@ if (!isset($_REQUEST['State'])) {
 
 $stateId = urldecode((string) $_REQUEST['State']);
 $state = Auth\State::loadState($stateId, AutoAuth::STAGEID);
+
+$authSource = Auth\Source::getById($state[AutoAuth::AUTHID]);
+if ($authSource === null) {
+    throw new Error\BadRequest('Invalid authentication source in state.');
+}
+
+$authSource->authenticate($state);
