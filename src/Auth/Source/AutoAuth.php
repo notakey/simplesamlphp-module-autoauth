@@ -47,6 +47,8 @@ class AutoAuth extends Auth\Source
 
     public const PREAUTH_COMPLETE_TAG = 'autoauth:AutoAuth.preAuthComplete';
 
+    public const SELECTED_SOURCE = 'autoauth:AutoAuth.selectedSource';
+
     private const PREAUTH_LOGIN_COMPLETED_HANDLER = 'autoauth:AutoAuth.preAuthLoginCompletedHandler';
 
     /**
@@ -222,7 +224,15 @@ class AutoAuth extends Auth\Source
 
         $authId = null;
         $auth_source_index = -1;
-        if ($source_hint == null) {
+        if (isset($state[self::SELECTED_SOURCE]) && is_string($state[self::SELECTED_SOURCE])) {
+            $authId = $state[self::SELECTED_SOURCE];
+            foreach ($this->sources as $index => $source) {
+                if ($source['source'] === $authId) {
+                    $auth_source_index = $index;
+                    break;
+                }
+            }
+        } elseif ($source_hint == null) {
             foreach ($this->sources as $index => $source) {
                 foreach ($source['subnets'] as $ipsubnet) {
                     if ($this->belongsToIpSubnet($ipsubnet)) {
@@ -244,6 +254,8 @@ class AutoAuth extends Auth\Source
         if (!$authId) {
             throw new Exception('Authentication source cannot be discovered');
         }
+
+        $state[self::SELECTED_SOURCE] = $authId;
 
         if (
             $auth_source_index > -1 &&
