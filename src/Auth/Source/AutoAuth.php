@@ -46,6 +46,9 @@ class AutoAuth extends Auth\Source
     public const STAGEID = 'autoauth:AutoAuth';
 
     public const PREAUTH_COMPLETE_TAG = 'autoauth:AutoAuth.preAuthComplete';
+
+    private const PREAUTH_LOGIN_COMPLETED_HANDLER = 'autoauth:AutoAuth.preAuthLoginCompletedHandler';
+
     /**
      * The key where the selected source is saved in the session.
      */
@@ -262,6 +265,10 @@ class AutoAuth extends Auth\Source
                     throw new Exception('Invalid pre-authentication source: ' . $this->sources[$auth_source_index]['preauth-source']);
                 }
 
+                $state[self::PREAUTH_LOGIN_COMPLETED_HANDLER] = [
+                    'exists' => array_key_exists('LoginCompletedHandler', $state),
+                    'handler' => $state['LoginCompletedHandler'] ?? null,
+                ];
                 $state['LoginCompletedHandler'] = [self::class, 'preAuthCompleted'];
                 $state[self::PREAUTH_COMPLETE_TAG] = false;
                 $state[self::PREAUTH_COOKIE_KEY] = $cookieKey;
@@ -299,6 +306,14 @@ class AutoAuth extends Auth\Source
             $state['Attributes'][$state[self::PREAUTH_UID_KEY]][0],
             $state[self::PREAUTH_DURATION_KEY]
         );
+
+        $loginCompletedHandler = $state[self::PREAUTH_LOGIN_COMPLETED_HANDLER];
+        if ($loginCompletedHandler['exists']) {
+            $state['LoginCompletedHandler'] = $loginCompletedHandler['handler'];
+        } else {
+            unset($state['LoginCompletedHandler']);
+        }
+        unset($state[self::PREAUTH_LOGIN_COMPLETED_HANDLER]);
 
         $state[self::PREAUTH_COMPLETE_TAG] = true;
         /*
